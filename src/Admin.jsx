@@ -122,7 +122,7 @@ async function addProduct(e) {
       formData.append("_method", "PUT");
     }
 
-    const response =fetch(
+    const response = await fetch(
   isEditing
     ? `${import.meta.env.VITE_API_URL}/products/${editingId}`
     : `${import.meta.env.VITE_API_URL}/products`,
