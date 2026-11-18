@@ -7,7 +7,7 @@ function Admin() {
  const [searchOrder, setSearchOrder] = useState("");
 
 useEffect(() => {
-  fetch("http://127.0.0.1:8000/api/products")
+fetch(`${import.meta.env.VITE_API_URL}/products`)
     .then((response) => {
       if (!response.ok) {
         throw new Error("فشل تحميل المنتجات");
@@ -23,7 +23,7 @@ useEffect(() => {
     });
 }, []);
 useEffect(() => {
-  fetch("http://127.0.0.1:8000/api/orders")
+fetch(`${import.meta.env.VITE_API_URL}/orders`)
     .then((response) => {
       if (!response.ok) {
         throw new Error("فشل تحميل الطلبات");
@@ -53,9 +53,9 @@ useEffect(() => {
 
 async function updateOrderStatus(orderId, newStatus) {
   try {
-    const response = await fetch(
-      `http://127.0.0.1:8000/api/orders/${orderId}/status`,
-      {
+const response = await fetch(
+  `${import.meta.env.VITE_API_URL}/orders/${orderId}/status`,
+  {
         method: "PATCH",
         headers: {
           "Content-Type": "application/json",
@@ -122,11 +122,11 @@ async function addProduct(e) {
       formData.append("_method", "PUT");
     }
 
-    const response = await fetch(
-      isEditing
-        ? `http://127.0.0.1:8000/api/products/${editingId}`
-        : "http://127.0.0.1:8000/api/products",
-      {
+    const response =fetch(
+  isEditing
+    ? `${import.meta.env.VITE_API_URL}/products/${editingId}`
+    : `${import.meta.env.VITE_API_URL}/products`,
+  {
         method: "POST",
         headers: {
           Accept: "application/json",
@@ -184,9 +184,9 @@ async function deleteProduct(id) {
   if (!window.confirm("هل تريد حذف هذا المنتج؟")) return;
 
   try {
-    const response = await fetch(
-      `http://127.0.0.1:8000/api/products/${id}`,
-      {
+const response = await fetch(
+  `${import.meta.env.VITE_API_URL}/products/${id}`,
+  {
         method: "DELETE",
         headers: {
           Accept: "application/json",
@@ -223,9 +223,9 @@ async function migrateProducts() {
       return;
     }
 
-    const checkResponse = await fetch(
-      "http://127.0.0.1:8000/api/products"
-    );
+const checkResponse = await fetch(
+  `${import.meta.env.VITE_API_URL}/products`
+);
 
     const existingProducts = await checkResponse.json();
 
@@ -235,9 +235,9 @@ async function migrateProducts() {
     }
 
     for (const product of localProducts) {
-      const response = await fetch(
-        "http://127.0.0.1:8000/api/products",
-        {
+const response = await fetch(
+  `${import.meta.env.VITE_API_URL}/products`,
+  {
           method: "POST",
           headers: {
             "Content-Type": "application/json",

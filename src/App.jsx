@@ -2,8 +2,7 @@
 import { useEffect, useMemo, useState } from "react";
 import "./index.css";
 import Admin from "./Admin";
-const API_URL = "http://127.0.0.1:8000/api";
-
+const API_URL = import.meta.env.VITE_API_URL;ش
 const products = [
   {
     id: 1,
