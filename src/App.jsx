@@ -5,12 +5,14 @@ import Admin from "./Admin";
 const API_URL = import.meta.env.VITE_API_URL;
 function formatProduct(product) {
   return {
-  ...product,
-  price: Number(product.price),
-  oldPrice: null,
-};
+    ...product,
+    price: Number(product.price),
+    oldPrice: product.old_price ?? null,
+    image: product.image
+      ? product.image.replace(/^http:\/\//, "https://")
+      : "",
+  };
 }
-
 
 const categories = ["الكل", "الطناجر وأواني الطبخ", "الصحون وأطقم التقديم", "إكسسوارات الغاز", "الأجهزة الكهربائية" , "إكسسوارات المطبخ"];
 
