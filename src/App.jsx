@@ -117,7 +117,11 @@ useEffect(() => {
       return response.json();
     })
     .then((data) => {
-      setAdminProducts(data.map(formatProduct));
+      // setAdminProducts( data.map(formatProduct));
+      console.log("عدد المنتجات من Laravel:", data.length);
+console.log("المنتجات:", data);
+
+setAdminProducts(data.map(formatProduct));
       console.log("تم تحميل المنتجات من Laravel:", data);
     })
     .catch((error) => {
