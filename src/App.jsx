@@ -3,16 +3,59 @@ import { useEffect, useMemo, useState } from "react";
 import "./index.css";
 import Admin from "./Admin";
 const API_URL = import.meta.env.VITE_API_URL;
+
+// IndexedDB can store large product images without localStorage's small quota.
+const PRODUCT_DB = "almadhoun-store-cache";
+const PRODUCT_STORE = "data";
+
+function openProductCache() {
+  return new Promise((resolve, reject) => {
+    if (!window.indexedDB) return reject(new Error("IndexedDB unavailable"));
+    const request = indexedDB.open(PRODUCT_DB, 1);
+    request.onupgradeneeded = () => {
+      if (!request.result.objectStoreNames.contains(PRODUCT_STORE)) {
+        request.result.createObjectStore(PRODUCT_STORE);
+      }
+    };
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
+  });
+}
+
+async function readCachedProducts() {
+  const db = await openProductCache();
+  return new Promise((resolve, reject) => {
+    const transaction = db.transaction(PRODUCT_STORE, "readonly");
+    const request = transaction.objectStore(PRODUCT_STORE).get("products");
+    request.onsuccess = () => resolve(request.result ?? null);
+    request.onerror = () => reject(request.error);
+    transaction.oncomplete = () => db.close();
+    transaction.onerror = () => { db.close(); reject(transaction.error); };
+  });
+}
+
+async function writeCachedProducts(products) {
+  const db = await openProductCache();
+  return new Promise((resolve, reject) => {
+    const transaction = db.transaction(PRODUCT_STORE, "readwrite");
+    transaction.objectStore(PRODUCT_STORE).put(products, "products");
+    transaction.oncomplete = () => { db.close(); resolve(); };
+    transaction.onerror = () => { db.close(); reject(transaction.error); };
+    transaction.onabort = () => { db.close(); reject(transaction.error); };
+  });
+}
+
 function formatProduct(product) {
   return {
-    ...product,
-    price: Number(product.price),
-    oldPrice: product.old_price ?? null,
-    image: product.image
-      ? product.image.replace(/^http:\/\//, "https://")
-      : "",
-  };
+  ...product,
+  price: Number(product.price),
+  oldPrice: product.old_price ?? product.oldPrice ?? null,
+  image: typeof product.image === "string"
+    ? product.image.replace(/^http:\/\//i, "https://")
+    : "",
+};
 }
+
 
 const categories = ["الكل", "الطناجر وأواني الطبخ", "الصحون وأطقم التقديم", "إكسسوارات الغاز", "الأجهزة الكهربائية" , "إكسسوارات المطبخ"];
 
@@ -38,29 +81,48 @@ const [adminProducts, setAdminProducts] = useState([]);
 
 
 useEffect(() => {
+  let cancelled = false;
+
   async function loadProducts() {
+    // Show the last successful product list while Render wakes up.
     try {
-      setProductsLoading(true);
-      setProductsError("");
+      const cached = await readCachedProducts();
+      if (!cancelled && Array.isArray(cached) && cached.length > 0) {
+        setAdminProducts(cached.map(formatProduct));
+        setProductsLoading(false);
+      }
+    } catch (error) {
+      console.warn("تعذر قراءة المنتجات المخزنة مؤقتاً:", error);
+    }
+
+    try {
+      if (!API_URL) throw new Error("متغير VITE_API_URL غير مضبوط");
       const response = await fetch(`${API_URL}/products`, {
         headers: { Accept: "application/json" },
+        cache: "no-store",
       });
-      if (!response.ok) {
-        throw new Error(`فشل تحميل المنتجات (${response.status})`);
-      }
+      if (!response.ok) throw new Error(`فشل تحميل المنتجات (${response.status})`);
       const data = await response.json();
-      if (!Array.isArray(data)) {
-        throw new Error("استجابة المنتجات ليست قائمة صالحة");
+      if (!Array.isArray(data)) throw new Error("استجابة المنتجات ليست قائمة صالحة");
+      const latestProducts = data.map(formatProduct);
+      if (!cancelled) {
+        setAdminProducts(latestProducts);
+        setProductsError("");
       }
-      setAdminProducts(data.map(formatProduct));
+      // An empty successful response is valid: clear the previous cache too.
+      await writeCachedProducts(latestProducts).catch((error) => {
+        console.warn("تعذر حفظ المنتجات مؤقتاً:", error);
+      });
     } catch (error) {
       console.error("خطأ في تحميل المنتجات:", error);
-      setProductsError(error.message || "تعذر تحميل المنتجات");
+      if (!cancelled) setProductsError(error.message || "تعذر تحديث المنتجات");
     } finally {
-      setProductsLoading(false);
+      if (!cancelled) setProductsLoading(false);
     }
   }
+
   loadProducts();
+  return () => { cancelled = true; };
 }, []);
 
 
@@ -313,8 +375,14 @@ ${orderDetails}
             </span>
           </div>
 
-          {productsLoading && <p>جاري تحميل المنتجات...</p>}
-          {productsError && <p role="alert">تعذر تحميل المنتجات: {productsError}</p>}
+          {productsLoading && adminProducts.length === 0 && <p>جاري تحميل المنتجات...</p>}
+          {productsError && (
+            <p role="alert">
+              {adminProducts.length > 0
+                ? `تعذر تحديث المنتجات حالياً؛ يتم عرض آخر نسخة محفوظة. ${productsError}`
+                : `تعذر تحميل المنتجات: ${productsError}`}
+            </p>
+          )}
           <div className="products-grid">
             {filteredProducts.map((product) => (
               <article className="product-card" key={product.id}>
