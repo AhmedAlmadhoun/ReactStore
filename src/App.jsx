@@ -44,16 +44,17 @@ async function writeCachedProducts(products) {
     transaction.onabort = () => { db.close(); reject(transaction.error); };
   });
 }
-
 function formatProduct(product) {
+  const image = product.image || "";
+
   return {
-  ...product,
-  price: Number(product.price),
-  oldPrice: product.old_price ?? product.oldPrice ?? null,
-  image: typeof product.image === "string"
-    ? product.image.replace(/^http:\/\//i, "https://")
-    : "",
-};
+    ...product,
+    price: Number(product.price),
+    oldPrice: product.old_price ?? null,
+    image: image.startsWith("http://")
+      ? image.replace("http://", "https://")
+      : image,
+  };
 }
 
 
