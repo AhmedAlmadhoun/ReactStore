@@ -3,81 +3,6 @@ import { useEffect, useMemo, useState } from "react";
 import "./index.css";
 import Admin from "./Admin";
 const API_URL = import.meta.env.VITE_API_URL;
-const products = [
-  {
-    id: 1,
-    name: "طقم أواني الطهي الفاخر",
-    category: "المطبخ",
-    price: 180,
-    oldPrice: 220,
-    image: "https://images.unsplash.com/photo-1584990347449-a8e7c9d7f7c8?w=700",
-    badge: "الأكثر مبيعاً",
-  },
-  {
-    id: 2,
-    name: "غلاية كهربائية عصرية",
-    category: "الأجهزة",
-    price: 95,
-    oldPrice: 120,
-    image: "https://images.unsplash.com/photo-1594213114663-d94db9b1714e?w=700",
-    
-  },
-  {
-    id: 3,
-    name: "طقم فناجين قهوة أنيق",
-    category: "الضيافة",
-    price: 65,
-    oldPrice: null,
-    image: "https://images.unsplash.com/photo-1514228742587-6b1558fcca3d?w=700",
-    badge: "",
-  },
-  {
-    id: 4,
-    name: "أدوات تقديم فاخرة",
-    category: "الضيافة",
-    price: 75,
-    oldPrice: 90,
-    image: "https://images.unsplash.com/photo-1490645935967-10de6ba17061?w=700",
-    badge: "مميز",
-  },
-  {
-    id: 5,
-    name: "خلاط كهربائي متعدد الاستخدام",
-    category: "الأجهزة",
-    price: 145,
-    oldPrice: null,
-    image: "https://images.unsplash.com/photo-1570222094114-d054a817e56b?w=700",
-    badge: "",
-  },
-  {
-    id: 6,
-    name: "مجموعة أدوات المطبخ",
-    category: "المطبخ",
-    price: 55,
-    oldPrice: 70,
-    image: "https://images.unsplash.com/photo-1556911220-e15b29be8c8f?w=700",
-    badge: "",
-  },
-  {
-    id: 7,
-    name: "قطعة ديكور منزلية",
-    category: "الديكور",
-    price: 85,
-    oldPrice: null,
-    image: "https://images.unsplash.com/photo-1490312278390-ab64016e0aa9?w=700",
-    badge: "",
-  },
-  {
-    id: 8,
-    name: "طقم أدوات تقديم الطعام",
-    category: "المطبخ",
-    price: 110,
-    oldPrice: 135,
-    image: "https://images.unsplash.com/photo-1603199506016-b9a594b593c0?w=700",
-    badge: "الأكثر مبيعاً",
-  },
-];
-
 function formatProduct(product) {
   return {
   ...product,
@@ -103,30 +28,37 @@ const [category, setCategory] = useState("الكل");
 const [search, setSearch] = useState("");
 
  
-const [adminProducts, setAdminProducts] = useState(products);
+const [adminProducts, setAdminProducts] = useState([]);
+  const [productsLoading, setProductsLoading] = useState(true);
+  const [productsError, setProductsError] = useState("");
 
   const [customerName, setCustomerName] = useState("");
 
 
 useEffect(() => {
-  fetch(`${API_URL}/products`)
-    .then((response) => {
+  async function loadProducts() {
+    try {
+      setProductsLoading(true);
+      setProductsError("");
+      const response = await fetch(`${API_URL}/products`, {
+        headers: { Accept: "application/json" },
+      });
       if (!response.ok) {
-        throw new Error("فشل تحميل المنتجات");
+        throw new Error(`فشل تحميل المنتجات (${response.status})`);
       }
-      return response.json();
-    })
-    .then((data) => {
-      // setAdminProducts( data.map(formatProduct));
-      console.log("عدد المنتجات من Laravel:", data.length);
-console.log("المنتجات:", data);
-
-setAdminProducts(data.map(formatProduct));
-      console.log("تم تحميل المنتجات من Laravel:", data);
-    })
-    .catch((error) => {
+      const data = await response.json();
+      if (!Array.isArray(data)) {
+        throw new Error("استجابة المنتجات ليست قائمة صالحة");
+      }
+      setAdminProducts(data.map(formatProduct));
+    } catch (error) {
       console.error("خطأ في تحميل المنتجات:", error);
-    });
+      setProductsError(error.message || "تعذر تحميل المنتجات");
+    } finally {
+      setProductsLoading(false);
+    }
+  }
+  loadProducts();
 }, []);
 
 
@@ -139,12 +71,13 @@ const [customerAddress, setCustomerAddress] = useState("");
 
 
 const filteredProducts = useMemo(() => {
+  const normalizedSearch = search.trim().toLowerCase();
   return adminProducts.filter((product) => {
     const matchesCategory =
-      category === "الكل" || product.category === category;
-
-    const matchesSearch = product.name.includes(search);
-
+      category === "الكل" || String(product.category || "").trim() === category.trim();
+    const matchesSearch = String(product.name || "")
+      .toLowerCase()
+      .includes(normalizedSearch);
     return matchesCategory && matchesSearch;
   });
 }, [category, search, adminProducts]);
@@ -378,6 +311,8 @@ ${orderDetails}
             </span>
           </div>
 
+          {productsLoading && <p>جاري تحميل المنتجات...</p>}
+          {productsError && <p role="alert">تعذر تحميل المنتجات: {productsError}</p>}
           <div className="products-grid">
             {filteredProducts.map((product) => (
               <article className="product-card" key={product.id}>
@@ -406,7 +341,7 @@ ${orderDetails}
             ))}
           </div>
 
-          {filteredProducts.length === 0 && (
+          {!productsLoading && !productsError && filteredProducts.length === 0 && (
             <p className="empty-search">لم نعثر على منتجات مطابقة للبحث.</p>
           )}
         </section>
