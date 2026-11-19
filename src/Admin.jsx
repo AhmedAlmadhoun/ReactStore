@@ -504,8 +504,14 @@ const response = await fetch(
           ) : (
             products.map((product) => (
               <div className="admin-product" key={product.id}>
-                <img src={product.image} alt={product.name} />
-
+                {/* <img src={product.image} alt={product.name} /> */}
+<img
+  src={product.image?.replace(/^http:\/\//, "https://")}
+  alt={product.name}
+  onError={(e) => {
+    console.error("Image failed:", e.currentTarget.src);
+  }}
+/>
                 <div>
                   <strong>{product.name}</strong>
                   <p>{product.price} شيكل</p>

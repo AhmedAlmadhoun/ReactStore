@@ -389,7 +389,14 @@ ${orderDetails}
               <article className="product-card" key={product.id}>
                 <div className="product-image">
                   
-                  <img src={product.image} alt={product.name} />
+                  {/* <img src={product.image} alt={product.name} /> */}
+                  <img
+  src={product.image?.replace(/^http:\/\//, "https://")}
+  alt={product.name}
+  onError={(e) => {
+    console.error("Image failed:", e.currentTarget.src);
+  }}
+/>
                 </div>
 
                 <div className="product-info">
