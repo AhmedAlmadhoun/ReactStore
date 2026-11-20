@@ -7,20 +7,22 @@ function Admin() {
  const [searchOrder, setSearchOrder] = useState("");
 
 useEffect(() => {
-fetch(`${import.meta.env.VITE_API_URL}/products`)
-    .then((response) => {
-      if (!response.ok) {
-        throw new Error("فشل تحميل المنتجات");
-      }
-      return response.json();
-    })
-    .then((data) => {
-      setProducts(data);
-      console.log("تم تحميل منتجات لوحة التحكم:", data);
-    })
-    .catch((error) => {
-      console.error("خطأ في تحميل المنتجات:", error);
-    });
+  const loadProducts = async () => {
+    try {
+      const url = `${import.meta.env.VITE_API_URL}/products`;
+      console.log("Products URL:", url);
+      const response = await fetch(url, { headers: { Accept: "application/json" } });
+      console.log("Products HTTP status:", response.status);
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const data = await response.json();
+      console.log("Products response:", data);
+      const list = Array.isArray(data) ? data : Array.isArray(data?.data) ? data.data : [];
+      setProducts(list);
+    } catch (error) {
+      console.error("Products loading failed:", error);
+    }
+  };
+  loadProducts();
 }, []);
 useEffect(() => {
 fetch(`${import.meta.env.VITE_API_URL}/orders`)
@@ -45,11 +47,6 @@ fetch(`${import.meta.env.VITE_API_URL}/orders`)
  const [category, setCategory] = useState("الطناجر وأواني الطبخ");
   const [image, setImage] = useState("");
   const [editingId, setEditingId] = useState(null);
-
-  function saveProducts(updatedProducts) {
-  setProducts(updatedProducts);
-  localStorage.setItem("all-products", JSON.stringify(updatedProducts));
-}
 
 async function updateOrderStatus(orderId, newStatus) {
   try {
@@ -212,63 +209,6 @@ const response = await fetch(
 }
 
 
-async function migrateProducts() {
-  try {
-    const localProducts = JSON.parse(
-      localStorage.getItem("all-products") || "[]"
-    );
-
-    if (localProducts.length === 0) {
-      alert("لا توجد منتجات لنقلها");
-      return;
-    }
-
-const checkResponse = await fetch(
-  `${import.meta.env.VITE_API_URL}/products`
-);
-
-    const existingProducts = await checkResponse.json();
-
-    if (existingProducts.length > 0) {
-      alert("قاعدة البيانات تحتوي على منتجات بالفعل. لن نكرر النقل.");
-      return;
-    }
-
-    for (const product of localProducts) {
-const response = await fetch(
-  `${import.meta.env.VITE_API_URL}/products`,
-  {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Accept: "application/json",
-          },
-          body: JSON.stringify({
-            name: product.name,
-            description: product.description || null,
-            price: Number(product.price),
-            old_price: product.oldPrice ?? product.old_price ?? null,
-            category: product.category,
-            image: product.image || null,
-            badge: product.badge || null,
-            stock: Number(product.stock || 0),
-          }),
-        }
-      );
-
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(JSON.stringify(error));
-      }
-    }
-
-    alert("تم نقل جميع المنتجات بنجاح إلى قاعدة البيانات!");
-  } catch (error) {
-    console.error(error);
-    alert("حدث خطأ أثناء النقل: " + error.message);
-  }
-}
-
   return (
     <div className="admin-page" dir="rtl">
       <header className="admin-header">
@@ -278,9 +218,6 @@ const response = await fetch(
 
       <main className="admin-content">
         <section className="admin-stats">
-
-<main className="admin-content">
-  <section className="admin-stats">
 
   <div className="stat-card">
     <span>إجمالي المنتجات</span>
@@ -315,22 +252,6 @@ const response = await fetch(
 
 </section>
 
-  <div style={{ margin: "20px 0", textAlign: "center" }}>
-    <button
-      type="button"
-      onClick={migrateProducts}
-      style={{
-        background: "#166534",
-        color: "white",
-        padding: "12px 20px",
-        borderRadius: "8px",
-        cursor: "pointer",
-        border: "none",
-      }}
-    >
-      نقل المنتجات إلى قاعدة البيانات
-    </button>
-  </div>
   <section className="admin-section">
   <h2>طلبات العملاء</h2>
   <input
@@ -359,8 +280,8 @@ const response = await fetch(
 
     return (
       String(order.id).includes(search) ||
-      order.customer_name.toLowerCase().includes(search) ||
-      order.customer_phone.includes(search)
+      String(order.customer_name ?? "").toLowerCase().includes(search) ||
+      String(order.customer_phone ?? "").includes(search)
     );
   })
   .map((order) => (
@@ -383,8 +304,7 @@ const response = await fetch(
             <strong>الإجمالي:</strong> {order.total} شيكل
           </p>
 
-          <p>
-            <div style={{ margin: "12px 0" }}>
+          <div style={{ margin: "12px 0" }}>
   <strong>حالة الطلب:</strong>
 
   <select
@@ -405,11 +325,10 @@ const response = await fetch(
     <option value="cancelled">ملغي</option>
   </select>
 </div>
-          </p>
 
           <h4>المنتجات:</h4>
 
-          {order.items.map((item) => (
+          {(order.items ?? []).map((item) => (
             <p key={item.id}>
               {item.product_name} - الكمية: {item.quantity}
               - السعر: {item.price} شيكل
@@ -420,14 +339,6 @@ const response = await fetch(
     </div>
   )}
 </section>
-</main>
-
-          
-          <div className="stat-card">
-            <span>إجمالي المنتجات</span>
-            <strong>{products.length}</strong>
-          </div>
-        </section>
 
         <section className="admin-form-section">
           <h2>إضافة منتج جديد</h2>
@@ -487,7 +398,7 @@ const response = await fetch(
       setName("");
       setPrice("");
       setImage("");
-      setCategory("المطبخ");
+      setCategory("الطناجر وأواني الطبخ");
     }}
   >
     إلغاء التعديل
