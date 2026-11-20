@@ -1,239 +1,184 @@
 import { useEffect, useState } from "react";
+import { supabase } from "./supabase";
+
+const BUCKET = "product-images";
+const CATEGORIES = ["الطناجر وأواني الطبخ", "الصحون وأطقم التقديم", "إكسسوارات الغاز", "الأجهزة الكهربائية", "إكسسوارات المطبخ"];
 
 function Admin() {
- const [products, setProducts] = useState([]);
- const [orders, setOrders] = useState([]);
- const [searchOrder, setSearchOrder] = useState("");
-
+  const [session, setSession] = useState(null);
+  const [authLoading, setAuthLoading] = useState(true);
+  const [authorized, setAuthorized] = useState(false);
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [authError, setAuthError] = useState("");
+  const [products, setProducts] = useState([]);
+  const [orders, setOrders] = useState([]);
+  const [searchOrder, setSearchOrder] = useState("");
   const [productsLoading, setProductsLoading] = useState(true);
   const [productsError, setProductsError] = useState("");
+  const [ordersLoading, setOrdersLoading] = useState(true);
+  const [ordersError, setOrdersError] = useState("");
+  const [name, setName] = useState("");
+  const [price, setPrice] = useState("");
+  const [category, setCategory] = useState(CATEGORIES[0]);
+  const [image, setImage] = useState(null);
+  const [editingId, setEditingId] = useState(null);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    async function check(currentSession) {
+      if (!active) return;
+      setAuthLoading(true);
+      setSession(currentSession);
+      setAuthorized(false);
+      if (currentSession?.user) {
+        const { data, error } = await supabase.from("admin_users")
+          .select("user_id").eq("user_id", currentSession.user.id).maybeSingle();
+        if (active) {
+          setAuthorized(!error && !!data);
+          if (error) setAuthError(error.message);
+        }
+      }
+      if (active) setAuthLoading(false);
+    }
+    supabase.auth.getSession().then(({ data }) => check(data.session));
+    const { data: listener } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+      // Defer database queries outside the auth callback.
+      setTimeout(() => { if (active) check(nextSession); }, 0);
+    });
+    return () => { active = false; listener.subscription.unsubscribe(); };
+  }, []);
+
+  useEffect(() => {
+    if (authorized) { loadProducts(); loadOrders(); }
+  }, [authorized]);
+
+  async function login(e) {
+    e.preventDefault();
+    setAuthError("");
+    const { error } = await supabase.auth.signInWithPassword({ email, password });
+    if (error) setAuthError(error.message);
+  }
+
+  async function logout() {
+    await supabase.auth.signOut();
+    setProducts([]);
+    setOrders([]);
+  }
 
   async function loadProducts() {
     setProductsLoading(true);
     setProductsError("");
-    try {
-      const apiUrl = import.meta.env.VITE_API_URL;
-      if (!apiUrl) throw new Error("متغير VITE_API_URL غير موجود في Vercel");
-      const url = `${apiUrl.replace(/\/$/, "")}/products`;
-      const response = await fetch(url, {
-        headers: { Accept: "application/json" },
-        cache: "no-store",
-      });
-      if (!response.ok) throw new Error(`HTTP ${response.status}`);
-      const data = await response.json();
-      const list = Array.isArray(data)
-        ? data
-        : Array.isArray(data?.data)
-          ? data.data
-          : Array.isArray(data?.products)
-            ? data.products
-            : null;
-      if (!list) throw new Error("تنسيق استجابة المنتجات غير متوقع");
-      console.log("تم تحميل المنتجات من Laravel:", list.length, list);
-      setProducts(list);
-    } catch (error) {
-      console.error("فشل تحميل المنتجات:", error);
-      setProductsError(error.message || "تعذر تحميل المنتجات");
-    } finally {
-      setProductsLoading(false);
-    }
+    const { data, error } = await supabase.from("products").select("*").order("id", { ascending: false });
+    if (error) setProductsError(error.message);
+    else setProducts(data || []);
+    setProductsLoading(false);
   }
 
-  useEffect(() => {
-    loadProducts();
-  }, []);
-useEffect(() => {
-fetch(`${import.meta.env.VITE_API_URL}/orders`)
-    .then((response) => {
-      if (!response.ok) {
-        throw new Error("فشل تحميل الطلبات");
-      }
+  async function loadOrders() {
+    setOrdersLoading(true);
+    setOrdersError("");
+    const { data, error } = await supabase.from("orders")
+      .select("*, items:order_items(id, product_name, price, quantity)")
+      .order("id", { ascending: false });
+    if (error) setOrdersError(error.message);
+    else setOrders(data || []);
+    setOrdersLoading(false);
+  }
 
-      return response.json();
-    })
-    .then((data) => {
-      setOrders(data);
-      console.log("تم تحميل الطلبات:", data);
-    })
-    .catch((error) => {
-      console.error("خطأ في تحميل الطلبات:", error);
+  async function updateOrderStatus(orderId, newStatus) {
+    const { error } = await supabase.from("orders")
+      .update({ status: newStatus, updated_at: new Date().toISOString() })
+      .eq("id", orderId);
+    if (error) return alert("تعذر تحديث الطلب: " + error.message);
+    setOrders(current => current.map(o => o.id === orderId ? { ...o, status: newStatus } : o));
+  }
+
+  async function uploadImage(file) {
+    if (!file.type.startsWith("image/")) throw new Error("يرجى اختيار ملف صورة صالح");
+    if (file.size > 5 * 1024 * 1024) throw new Error("حجم الصورة يجب ألا يتجاوز 5MB");
+    const extension = (file.name.split(".").pop() || "jpg").toLowerCase();
+    const path = `${crypto.randomUUID()}.${extension}`;
+    const { error } = await supabase.storage.from(BUCKET).upload(path, file, {
+      contentType: file.type, upsert: false
     });
-}, []);
+    if (error) throw error;
+    return supabase.storage.from(BUCKET).getPublicUrl(path).data.publicUrl;
+  }
 
-  const [name, setName] = useState("");
-  const [price, setPrice] = useState("");
- const [category, setCategory] = useState("الطناجر وأواني الطبخ");
-  const [image, setImage] = useState("");
-  const [editingId, setEditingId] = useState(null);
-
-async function updateOrderStatus(orderId, newStatus) {
-  try {
-const response = await fetch(
-  `${import.meta.env.VITE_API_URL}/orders/${orderId}/status`,
-  {
-        method: "PATCH",
-        headers: {
-          "Content-Type": "application/json",
-          Accept: "application/json",
-        },
-        body: JSON.stringify({
-          status: newStatus,
-        }),
+  async function addProduct(e) {
+    e.preventDefault();
+    if (!name.trim() || !Number.isFinite(Number(price)) || Number(price) <= 0) {
+      return alert("يرجى إدخال اسم المنتج وسعر صحيح");
+    }
+    setSaving(true);
+    try {
+      const currentProduct = editingId !== null ? products.find(p => p.id === editingId) : null;
+      const imageUrl = image instanceof File ? await uploadImage(image) : (currentProduct?.image || null);
+      const values = {
+        name: name.trim(), price: Number(price), category: category.trim(),
+        image: imageUrl, updated_at: new Date().toISOString()
+      };
+      let result;
+      if (editingId !== null) {
+        result = await supabase.from("products").update(values).eq("id", editingId).select("id").single();
+      } else {
+        result = await supabase.from("products").insert({
+          ...values, stock: 0, is_active: true, created_at: new Date().toISOString()
+        }).select("id").single();
       }
-    );
-
-    const data = await response.json();
-
-    if (!response.ok) {
-      throw new Error(data.message || "فشل تحديث حالة الطلب");
-    }
-
-    setOrders((previousOrders) =>
-      previousOrders.map((order) =>
-        order.id === orderId
-          ? { ...order, status: newStatus }
-          : order
-      )
-    );
-
-    alert("تم تحديث حالة الطلب بنجاح");
-  } catch (error) {
-    console.error("خطأ في تحديث الطلب:", error);
-    alert(error.message);
-  }
-}
-
-
-
-async function addProduct(e) {
-  e.preventDefault();
-
-  if (!name.trim() || !price || Number(price) <= 0) {
-    alert("يرجى إدخال اسم المنتج وسعر صحيح");
-    return;
+      if (result.error) throw result.error;
+      alert(editingId !== null ? "تم تعديل المنتج بنجاح" : "تمت إضافة المنتج بنجاح");
+      setEditingId(null); setName(""); setPrice(""); setCategory(CATEGORIES[0]); setImage(null);
+      await loadProducts();
+    } catch (error) {
+      alert("تعذر حفظ المنتج: " + error.message);
+    } finally { setSaving(false); }
   }
 
-  try {
-    const isEditing = editingId !== null;
-
-    const currentProduct = isEditing
-      ? products.find((product) => product.id === editingId)
-      : null;
-
-    const formData = new FormData();
-
-    formData.append("name", name);
-    formData.append("price", Number(price));
-    formData.append("category", category);
-    formData.append("stock", currentProduct?.stock ?? 0);
-
-    if (image instanceof File) {
-      formData.append("image", image);
-    } else if (image) {
-      formData.append("image", image);
-    }
-
-    if (isEditing) {
-      formData.append("_method", "PUT");
-    }
-
-    const response = await fetch(
-  isEditing
-    ? `${import.meta.env.VITE_API_URL}/products/${editingId}`
-    : `${import.meta.env.VITE_API_URL}/products`,
-  {
-        method: "POST",
-        headers: {
-          Accept: "application/json",
-        },
-        body: formData,
-      }
-    );
-
-    const data = await response.json();
-
-    if (!response.ok) {
-      throw new Error(JSON.stringify(data));
-    }
-
-    if (isEditing) {
-      setProducts((currentProducts) =>
-        currentProducts.map((product) =>
-          product.id === editingId ? data.product : product
-        )
-      );
-
-      alert("تم تعديل المنتج بنجاح");
-    } else {
-      setProducts((currentProducts) => [
-        data.product,
-        ...currentProducts,
-      ]);
-
-      alert("تمت إضافة المنتج بنجاح");
-    }
-
-    await loadProducts();
-
-    setEditingId(null);
-    setName("");
-    setPrice("");
-    setImage("");
-    setCategory("الطناجر وأواني الطبخ");
-
-  } catch (error) {
-    console.error("خطأ:", error);
-    alert("حدث خطأ: " + error.message);
+  function editProduct(product) {
+    setEditingId(product.id);
+    setName(product.name);
+    setPrice(String(product.price));
+    setCategory(product.category);
+    setImage(null);
+    window.scrollTo({ top: 0, behavior: "smooth" });
   }
-}
 
-
-function editProduct(product) {
-  setEditingId(product.id);
-  setName(product.name);
-  setPrice(product.price);
-  setCategory(product.category);
-  setImage("");
-}
-
-  
-async function deleteProduct(id) {
-  if (!window.confirm("هل تريد حذف هذا المنتج؟")) return;
-
-  try {
-const response = await fetch(
-  `${import.meta.env.VITE_API_URL}/products/${id}`,
-  {
-        method: "DELETE",
-        headers: {
-          Accept: "application/json",
-        },
-      }
-    );
-
-    const data = await response.json();
-
-    if (!response.ok) {
-      throw new Error(data.message || "فشل حذف المنتج");
-    }
-
-    setProducts((currentProducts) =>
-      currentProducts.filter((product) => product.id !== id)
-    );
-
-    alert("تم حذف المنتج بنجاح");
-  } catch (error) {
-    console.error("خطأ في حذف المنتج:", error);
-    alert("تعذر حذف المنتج: " + error.message);
+  async function deleteProduct(id) {
+    if (!window.confirm("هل تريد حذف هذا المنتج؟")) return;
+    const { error } = await supabase.from("products").delete().eq("id", id);
+    if (error) return alert("تعذر حذف المنتج: " + error.message);
+    setProducts(current => current.filter(p => p.id !== id));
   }
-}
 
+  if (authLoading) return <div className="admin-page" dir="rtl"><p>جاري التحقق من صلاحية المسؤول...</p></div>;
+  if (!session || !authorized) return (
+    <div className="admin-page" dir="rtl">
+      <header className="admin-header"><h1>لوحة تحكم المدهون</h1><p>تسجيل دخول المسؤول</p></header>
+      {!session ? (
+        <form className="admin-content" onSubmit={login} style={{ maxWidth: 440, margin: "40px auto" }}>
+          <label>البريد الإلكتروني</label>
+          <input type="email" required value={email} onChange={e => setEmail(e.target.value)} />
+          <label>كلمة المرور</label>
+          <input type="password" required value={password} onChange={e => setPassword(e.target.value)} />
+          <button type="submit">تسجيل الدخول</button>
+        </form>
+      ) : (
+        <main className="admin-content"><p>هذا الحساب ليس لديه صلاحية إدارة المتجر.</p>
+          <button type="button" onClick={logout}>تسجيل الخروج</button></main>
+      )}
+      {authError && <p role="alert">{authError}</p>}
+    </div>
+  );
 
   return (
     <div className="admin-page" dir="rtl">
       <header className="admin-header">
         <h1>لوحة تحكم المدهون</h1>
         <p>إدارة منتجات المتجر</p>
+        <button type="button" onClick={logout}>تسجيل الخروج</button>
       </header>
 
       <main className="admin-content">
@@ -361,7 +306,7 @@ const response = await fetch(
 </section>
 
         <section className="admin-form-section">
-          <h2>إضافة منتج جديد</h2>
+          <h2>{editingId !== null ? "تعديل المنتج" : "إضافة منتج جديد"}</h2>
 
           <form onSubmit={addProduct}>
             <label>اسم المنتج</label>
@@ -445,10 +390,10 @@ const response = await fetch(
               <div className="admin-product" key={product.id}>
                 {/* <img src={product.image} alt={product.name} /> */}
 <img
-  src={product.image?.replace(/^http:\/\//, "https://")}
+  src={product.image || ""}
   alt={product.name}
   onError={(e) => {
-    console.error("Image failed:", e.currentTarget.src);
+    e.currentTarget.style.display = "none";
   }}
 />
                 <div>

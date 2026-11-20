@@ -1,8 +1,7 @@
-
 import { useEffect, useMemo, useState } from "react";
+import { supabase } from './supabase';
 import "./index.css";
 import Admin from "./Admin";
-const API_URL = import.meta.env.VITE_API_URL;
 
 // IndexedDB can store large product images without localStorage's small quota.
 const PRODUCT_DB = "almadhoun-store-cache";
@@ -85,38 +84,22 @@ useEffect(() => {
   let cancelled = false;
 
   async function loadProducts() {
-    // Show the last successful product list while Render wakes up.
+    setProductsLoading(true);
     try {
-      const cached = await readCachedProducts();
-      if (!cancelled && Array.isArray(cached) && cached.length > 0) {
-        setAdminProducts(cached.map(formatProduct));
-        setProductsLoading(false);
-      }
-    } catch (error) {
-      console.warn("تعذر قراءة المنتجات المخزنة مؤقتاً:", error);
-    }
+      const { data, error } = await supabase
+        .from("products")
+        .select("*")
+        .eq("is_active", true)
+        .order("id", { ascending: true });
 
-    try {
-      if (!API_URL) throw new Error("متغير VITE_API_URL غير مضبوط");
-      const response = await fetch(`${API_URL}/products`, {
-        headers: { Accept: "application/json" },
-        cache: "no-store",
-      });
-      if (!response.ok) throw new Error(`فشل تحميل المنتجات (${response.status})`);
-      const data = await response.json();
-      if (!Array.isArray(data)) throw new Error("استجابة المنتجات ليست قائمة صالحة");
-      const latestProducts = data.map(formatProduct);
+      if (error) throw error;
       if (!cancelled) {
-        setAdminProducts(latestProducts);
+        setAdminProducts((data || []).map(formatProduct));
         setProductsError("");
       }
-      // An empty successful response is valid: clear the previous cache too.
-      await writeCachedProducts(latestProducts).catch((error) => {
-        console.warn("تعذر حفظ المنتجات مؤقتاً:", error);
-      });
     } catch (error) {
-      console.error("خطأ في تحميل المنتجات:", error);
-      if (!cancelled) setProductsError(error.message || "تعذر تحديث المنتجات");
+      console.error("خطأ في تحميل المنتجات من Supabase:", error);
+      if (!cancelled) setProductsError(error.message || "تعذر تحميل المنتجات");
     } finally {
       if (!cancelled) setProductsLoading(false);
     }
@@ -125,7 +108,6 @@ useEffect(() => {
   loadProducts();
   return () => { cancelled = true; };
 }, []);
-
 
 const [customerPhone, setCustomerPhone] = useState("");
 const [customerAddress, setCustomerAddress] = useState("");
@@ -195,62 +177,41 @@ if (window.location.pathname.startsWith("/admin")) {
 
 
 async function checkout() {
-  if (!cart.length) {
-    alert("السلة فارغة!");
-    return;
-  }
-
-  if (
-    !customerName.trim() ||
-    !customerPhone.trim() ||
-    !customerAddress.trim()
-  ) {
-    alert("يرجى تعبئة جميع بيانات التوصيل");
-    return;
+  if (!cart.length) return alert("السلة فارغة!");
+  if (!customerName.trim() || !customerPhone.trim() || !customerAddress.trim()) {
+    return alert("يرجى تعبئة جميع بيانات التوصيل");
   }
 
   try {
-    // إرسال الطلب إلى Laravel
-    const response = await fetch(`${API_URL}/orders`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Accept: "application/json",
-      },
-      body: JSON.stringify({
-        customer_name: customerName,
-        customer_phone: customerPhone,
-        customer_address: customerAddress,
-
+    const { data, error } = await supabase.functions.invoke("create-order", {
+      body: {
+        customer_name: customerName.trim(),
+        customer_phone: customerPhone.trim(),
+        customer_address: customerAddress.trim(),
         items: cart.map((item) => ({
           product_id: item.id,
           quantity: item.quantity,
         })),
-      }),
+      },
     });
-
-    const data = await response.json();
-
-    if (!response.ok) {
-      throw new Error(
-        data.message || "تعذر تسجيل الطلب"
-      );
+    if (error) {
+      let message = error.message || "تعذر تسجيل الطلب";
+      try {
+        const details = await error.context?.json();
+        if (details?.message) message = details.message;
+      } catch { /* ignore non-JSON error */ }
+      throw new Error(message);
     }
+    if (!data?.order?.id) throw new Error("لم يتم تأكيد حفظ الطلب");
 
-    // تجهيز رسالة WhatsApp بعد نجاح حفظ الطلب
-    const phone = "972595635789";
-
-    const orderDetails = cart
-      .map((item, index) => {
-        return `${index + 1}- ${item.name}
-الكمية: ${item.quantity}
-السعر: ${item.price} شيكل`;
-      })
-      .join("\n\n");
-
+    const order = data.order;
+    const items = order.items || [];
+    const orderDetails = items.map((item, index) =>
+      `${index + 1}- ${item.product_name}\nالكمية: ${item.quantity}\nالسعر: ${item.price} شيكل`
+    ).join("\n\n");
     const message = `طلب جديد من متجر المدهون
 
-رقم الطلب: ${data.order.id}
+رقم الطلب: ${order.id}
 
 اسم العميل: ${customerName}
 رقم الهاتف: ${customerPhone}
@@ -259,19 +220,16 @@ async function checkout() {
 المنتجات:
 ${orderDetails}
 
-الإجمالي: ${data.order.total} شيكل`;
-
-    const whatsappUrl =
-      `https://api.whatsapp.com/send?phone=${phone}&text=${encodeURIComponent(message)}`;
-
+الإجمالي: ${order.total} شيكل`;
+    const whatsappUrl = `https://api.whatsapp.com/send?phone=972595635789&text=${encodeURIComponent(message)}`;
+    setCart([]);
+    setCartOpen(false);
     window.location.href = whatsappUrl;
-
   } catch (error) {
     console.error("خطأ في تسجيل الطلب:", error);
     alert("حدث خطأ أثناء تسجيل الطلب: " + error.message);
   }
 }
-
 
 
   return (
@@ -389,14 +347,17 @@ ${orderDetails}
               <article className="product-card" key={product.id}>
                 <div className="product-image">
                   
-                  {/* <img src={product.image} alt={product.name} /> */}
-                  <img
-  src={product.image?.replace(/^http:\/\//, "https://")}
-  alt={product.name}
-  onError={(e) => {
-    console.error("Image failed:", e.currentTarget.src);
-  }}
-/>
+                  {product.image ? (
+                    <img
+                      src={product.image}
+                      alt={product.name}
+                      onError={(e) => {
+                        e.currentTarget.style.display = "none";
+                      }}
+                    />
+                  ) : (
+                    <span>لا توجد صورة</span>
+                  )}
                 </div>
 
                 <div className="product-info">
@@ -473,7 +434,7 @@ ${orderDetails}
                 <div className="cart-items">
                   {cart.map((item) => (
                     <div className="cart-item" key={item.id}>
-                      <img src={item.image} alt={item.name} />
+                      {item.image ? <img src={item.image} alt={item.name} /> : <span>لا توجد صورة</span>}
 
                       <div className="cart-item-info">
                         <h3>{item.name}</h3>
