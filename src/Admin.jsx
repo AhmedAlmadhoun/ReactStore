@@ -9,19 +9,38 @@ function Admin() {
 useEffect(() => {
   const loadProducts = async () => {
     try {
-      const url = `${import.meta.env.VITE_API_URL}/products`;
-      console.log("Products URL:", url);
-      const response = await fetch(url, { headers: { Accept: "application/json" } });
-      console.log("Products HTTP status:", response.status);
-      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const response = await fetch(
+        `${import.meta.env.VITE_API_URL}/products`,
+        {
+          headers: {
+            Accept: "application/json",
+          },
+          cache: "no-store",
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+
       const data = await response.json();
-      console.log("Products response:", data);
-      const list = Array.isArray(data) ? data : Array.isArray(data?.data) ? data.data : [];
-      setProducts(list);
+
+      console.log("المنتجات القادمة من Laravel:", data);
+
+      const productsList = Array.isArray(data)
+        ? data
+        : Array.isArray(data.data)
+          ? data.data
+          : [];
+
+      setProducts(productsList);
+
+      console.log("عدد المنتجات:", productsList.length);
     } catch (error) {
-      console.error("Products loading failed:", error);
+      console.error("فشل تحميل المنتجات:", error);
     }
   };
+
   loadProducts();
 }, []);
 useEffect(() => {
