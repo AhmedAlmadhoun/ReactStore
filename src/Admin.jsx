@@ -1,4 +1,3 @@
-
 import { useEffect, useState } from "react";
 
 function Admin() {
@@ -6,43 +5,43 @@ function Admin() {
  const [orders, setOrders] = useState([]);
  const [searchOrder, setSearchOrder] = useState("");
 
-useEffect(() => {
-  const loadProducts = async () => {
+  const [productsLoading, setProductsLoading] = useState(true);
+  const [productsError, setProductsError] = useState("");
+
+  async function loadProducts() {
+    setProductsLoading(true);
+    setProductsError("");
     try {
-      const response = await fetch(
-        `${import.meta.env.VITE_API_URL}/products`,
-        {
-          headers: {
-            Accept: "application/json",
-          },
-          cache: "no-store",
-        }
-      );
-
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}`);
-      }
-
+      const apiUrl = import.meta.env.VITE_API_URL;
+      if (!apiUrl) throw new Error("متغير VITE_API_URL غير موجود في Vercel");
+      const url = `${apiUrl.replace(/\/$/, "")}/products`;
+      const response = await fetch(url, {
+        headers: { Accept: "application/json" },
+        cache: "no-store",
+      });
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
       const data = await response.json();
-
-      console.log("المنتجات القادمة من Laravel:", data);
-
-      const productsList = Array.isArray(data)
+      const list = Array.isArray(data)
         ? data
-        : Array.isArray(data.data)
+        : Array.isArray(data?.data)
           ? data.data
-          : [];
-
-      setProducts(productsList);
-
-      console.log("عدد المنتجات:", productsList.length);
+          : Array.isArray(data?.products)
+            ? data.products
+            : null;
+      if (!list) throw new Error("تنسيق استجابة المنتجات غير متوقع");
+      console.log("تم تحميل المنتجات من Laravel:", list.length, list);
+      setProducts(list);
     } catch (error) {
       console.error("فشل تحميل المنتجات:", error);
+      setProductsError(error.message || "تعذر تحميل المنتجات");
+    } finally {
+      setProductsLoading(false);
     }
-  };
+  }
 
-  loadProducts();
-}, []);
+  useEffect(() => {
+    loadProducts();
+  }, []);
 useEffect(() => {
 fetch(`${import.meta.env.VITE_API_URL}/orders`)
     .then((response) => {
@@ -173,6 +172,8 @@ async function addProduct(e) {
 
       alert("تمت إضافة المنتج بنجاح");
     }
+
+    await loadProducts();
 
     setEditingId(null);
     setName("");
@@ -428,6 +429,14 @@ const response = await fetch(
 
         <section className="admin-products">
           <h2>المنتجات المضافة ({products.length})</h2>
+          <button type="button" onClick={loadProducts} disabled={productsLoading}>
+            {productsLoading ? "جاري تحميل المنتجات..." : "تحديث المنتجات من قاعدة البيانات"}
+          </button>
+          {productsError && (
+            <p role="alert" style={{ color: "#b91c1c" }}>
+              فشل تحميل المنتجات: {productsError}
+            </p>
+          )}
 
           {products.length === 0 ? (
             <p>لا توجد منتجات مضافة من لوحة التحكم حتى الآن.</p>
