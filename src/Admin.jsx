@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { supabase } from "./supabase";
-
+import "./Admin.css";
 const BUCKET = "product-images";
 const CATEGORIES = ["الطناجر وأواني الطبخ", "الصحون وأطقم التقديم", "إكسسوارات الغاز", "الأجهزة الكهربائية", "إكسسوارات المطبخ"];
 
@@ -153,25 +153,126 @@ function Admin() {
     setProducts(current => current.filter(p => p.id !== id));
   }
 
-  if (authLoading) return <div className="admin-page" dir="rtl"><p>جاري التحقق من صلاحية المسؤول...</p></div>;
-  if (!session || !authorized) return (
-    <div className="admin-page" dir="rtl">
-      <header className="admin-header"><h1>لوحة تحكم المدهون</h1><p>تسجيل دخول المسؤول</p></header>
-      {!session ? (
-        <form className="admin-content" onSubmit={login} style={{ maxWidth: 440, margin: "40px auto" }}>
-          <label>البريد الإلكتروني</label>
-          <input type="email" required value={email} onChange={e => setEmail(e.target.value)} />
-          <label>كلمة المرور</label>
-          <input type="password" required value={password} onChange={e => setPassword(e.target.value)} />
-          <button type="submit">تسجيل الدخول</button>
-        </form>
-      ) : (
-        <main className="admin-content"><p>هذا الحساب ليس لديه صلاحية إدارة المتجر.</p>
-          <button type="button" onClick={logout}>تسجيل الخروج</button></main>
-      )}
-      {authError && <p role="alert">{authError}</p>}
+  // if (authLoading) return <div className="admin-page" dir="rtl"><p>جاري التحقق من صلاحية المسؤول...</p></div>;
+  // if (!session || !authorized) return (
+  //   <div className="admin-page" dir="rtl">
+  //     <header className="admin-header"><h1>لوحة تحكم المدهون</h1><p>تسجيل دخول المسؤول</p></header>
+  //     {!session ? (
+  //       <form className="admin-content" onSubmit={login} style={{ maxWidth: 440, margin: "40px auto" }}>
+  //         <label>البريد الإلكتروني</label>
+  //         <input type="email" required value={email} onChange={e => setEmail(e.target.value)} />
+  //         <label>كلمة المرور</label>
+  //         <input type="password" required value={password} onChange={e => setPassword(e.target.value)} />
+  //         <button type="submit">تسجيل الدخول</button>
+  //       </form>
+  //     ) : (
+  //       <main className="admin-content"><p>هذا الحساب ليس لديه صلاحية إدارة المتجر.</p>
+  //         <button type="button" onClick={logout}>تسجيل الخروج</button></main>
+  //     )}
+  //     {authError && <p role="alert">{authError}</p>}
+  //   </div>
+  // );
+
+if (authLoading) {
+  return (
+    <div className="admin-login-page" dir="rtl">
+      <div className="admin-login-card">
+        <div className="login-spinner" />
+        <p>جاري التحقق من صلاحية المسؤول...</p>
+      </div>
     </div>
   );
+}
+
+if (!session || !authorized) {
+  return (
+    <div className="admin-login-page" dir="rtl">
+      <div className="admin-login-card">
+
+        <div className="login-logo">
+          <span>◆</span>
+        </div>
+
+        <div className="login-heading">
+          <h1>المدهون</h1>
+          <p>لوحة إدارة المتجر</p>
+        </div>
+
+        <div className="login-divider" />
+
+        {!session ? (
+          <>
+            <div className="login-welcome">
+              <h2>مرحباً بعودتك 👋</h2>
+              <p>سجل دخولك للوصول إلى لوحة التحكم</p>
+            </div>
+
+            <form className="login-form" onSubmit={login}>
+              <div className="login-field">
+                <label htmlFor="admin-email">
+                  البريد الإلكتروني
+                </label>
+                <input
+                  id="admin-email"
+                  type="email"
+                  autoComplete="username"
+                  placeholder="admin@example.com"
+                  required
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                />
+              </div>
+
+              <div className="login-field">
+                <label htmlFor="admin-password">
+                  كلمة المرور
+                </label>
+                <input
+                  id="admin-password"
+                  type="password"
+                  autoComplete="current-password"
+                  placeholder="أدخل كلمة المرور"
+                  required
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                />
+              </div>
+
+              {authError && (
+                <div className="login-error" role="alert">
+                  {authError}
+                </div>
+              )}
+
+              <button className="login-submit" type="submit">
+                تسجيل الدخول
+                <span>←</span>
+              </button>
+            </form>
+          </>
+        ) : (
+          <div className="login-unauthorized">
+            <h2>الوصول غير مسموح</h2>
+            <p>هذا الحساب ليس لديه صلاحية إدارة المتجر.</p>
+            <button
+              className="login-submit"
+              type="button"
+              onClick={logout}
+            >
+              تسجيل الخروج
+            </button>
+          </div>
+        )}
+
+        <div className="login-footer">
+          <span>🔒</span>
+          <p>منطقة آمنة مخصصة للمسؤولين فقط</p>
+        </div>
+
+      </div>
+    </div>
+  );
+}
 
   return (
     <div className="admin-page" dir="rtl">
